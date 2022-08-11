@@ -423,7 +423,7 @@ jobs:
         uses: tailscale/github-action@e870a1112fcc1faeeeeea3c1b0ce544e5ad01844
         with:
           authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-          version: 1.26.2
+          version: 1.28.0
       - name: Deploy dapr to AKS cluster
         if: env.TEST_PREFIX != ''
         env:
