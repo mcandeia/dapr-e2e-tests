@@ -415,7 +415,7 @@ jobs:
           while [[ $(kubectl get pods -l app=tailscale -n ${{ env.DAPR_NAMESPACE }} -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}') != "True" ]]; do echo "waiting for tailscale pod" && sleep 1; done
           echo "tailscale pod is now ready"
           sleep 5
-          kubectl logs -l app=tailscale ${{ env.DAPR_NAMESPACE }}
+          kubectl logs -l app=tailscale -n ${{ env.DAPR_NAMESPACE }}
         shell: bash
       - name: Tailscale
         uses: tailscale/github-action@e870a1112fcc1faeeeeea3c1b0ce544e5ad01844
