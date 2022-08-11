@@ -145,13 +145,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-2019]
+        os: [ubuntu-latest]
         target_arch: [amd64]
         include:
           - os: ubuntu-latest
             target_os: linux
-          - os: windows-2019
-            target_os: windows
     steps:
       - name: Set up for scheduled test
         if: github.event_name != 'repository_dispatch'
@@ -414,12 +412,13 @@ jobs:
 
           # Pod and service cidr used by tailscale subnet router
           echo "Getting pod and service CIDR"
-          kubectl cluster-info dump
-          kubectl cluster-info dump | grep -m 1 service-cluster-ip-range
-          kubectl cluster-info dump | grep -m 1 service-cluster-ip-range |grep -E -o "([0-9]{1,3}[\.]){3}[0-9]{1,3}/[0-9]{1,3}" | tr -d '\n'
-          kubectl cluster-info dump | grep -m 1 cluster-cidr |grep -E -o "([0-9]{1,3}[\.]){3}[0-9]{1,3}/[0-9]{1,3}" | tr -d '\n'
-          SERVICE_CIDR=$(kubectl cluster-info dump | grep -m 1 cluster-cidr |grep -E -o "([0-9]{1,3}[\.]){3}[0-9]{1,3}/[0-9]{1,3}" | tr -d '\n')
-          POD_CIDR=$(kubectl cluster-info dump | grep -m 1 service-cluster-ip-range |grep -E -o "([0-9]{1,3}[\.]){3}[0-9]{1,3}/[0-9]{1,3}" | tr -d '\n')
+          echo "PODCIDR"
+          kubectl get nodes -o jsonpath='{.items[*].spec.podCIDR}'
+          echo "SERVICE DIR"
+          kubectl cluster-info dump | grep -m 1 cluster-cidr |grep -E -o "([0-9]{1,3}[\.]){3}[0-9]{1,3}/[0-9]{1,3}"
+          echo "GETTING"
+          SERVICE_CIDR=$(kubectl cluster-info dump | grep -m 1 cluster-cidr |grep -E -o "([0-9]{1,3}[\.]){3}[0-9]{1,3}/[0-9]{1,3}" )
+          POD_CIDR=$(kubectl get nodes -o jsonpath='{.items[*].spec.podCIDR}')
 
           echo "$SERVICE_CIDR,$POD_CIDR"
           echo "SERVICE_CIDR=${SERVICE_CIDR}" >> $GITHUB_ENV
