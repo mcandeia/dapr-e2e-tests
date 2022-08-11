@@ -16,3 +16,8 @@ jobs:
         with:
           authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
           version: 1.26.2
+
+      - name: Make a request
+        shell: bash
+        run: |
+          curl http://10.96.116.82:1234/get
