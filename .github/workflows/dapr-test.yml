@@ -300,12 +300,10 @@ jobs:
       PULL_POLICY: IfNotPresent
       TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
       TEST_E2E_USE_INTERNAL_IP: true
-      POD_CIDR: 10.244.0.0/24,10.244.2.0/24,10.244.1.0/24
-      SERVICE_CIDR: 10.244.0.0/16
     strategy:
       fail-fast: false
       matrix:
-        target_os: [linux, windows]
+        target_os: [linux]
         target_arch: [amd64]
     steps:
       - name: Set up log paths
@@ -397,6 +395,22 @@ jobs:
           az aks get-credentials -n "${{ env.TEST_CLUSTER }}" -g "${{ env.TEST_RESOURCE_GROUP }}"
           kubectl create namespace ${{ env.DAPR_NAMESPACE }}
         shell: bash
+      - name: Setup tailscale subnet router
+        if: env.TEST_PREFIX != ''
+        run: |
+          # Pod and service cidr used by tailscale subnet router
+          POD_CIDR=$(kubectl cluster-info dump | grep -m 1 cluster-cidr |grep -E -o "([0-9]{1,3}[\.]){3}[0-9]{1,3}/[0-9]{1,3}")
+          SERVICE_CIDR=$(echo '{"apiVersion":"v1","kind":"Service","metadata":{"name":"tst"},"spec":{"clusterIP":"1.1.1.1","ports":[{"port":443}]}}' | kubectl apply -f - 2>&1 | sed 's/.*valid IPs is //')
+          POD_CIDR=${POD_CIDR} SERVICE_CIDR=${SERVICE_CIDR} make setup-tailscale
+          while [[ $(kubectl get pods -l app=tailscale -n ${{ env.DAPR_NAMESPACE }} -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}') != "True" ]]; do echo "waiting for tailscale pod" && kubectl logs -l app=tailscale -n ${{ env.DAPR_NAMESPACE }} && sleep 3; done
+          echo "tailscale pod is now ready"
+          sleep 5
+          kubectl logs -l app=tailscale -n ${{ env.DAPR_NAMESPACE }}
+      - name: Connect to tailscale VPN
+        uses: tailscale/github-action@e870a1112fcc1faeeeeea3c1b0ce544e5ad01844
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          version: 1.28.0
       - name: Setup for cloud resources
         if: env.TEST_PREFIX != '' && env.TEST_CLOUD_ENV != ''
         run: ./tests/test-infra/setup_${{ env.TEST_CLOUD_ENV }}.sh
@@ -411,19 +425,7 @@ jobs:
             make setup-test-env-mongodb
           fi
           kubectl get pods -n ${{ env.DAPR_NAMESPACE }}
-
-          # Pod and service cidr used by tailscale subnet router
-          make setup-tailscale
-          while [[ $(kubectl get pods -l app=tailscale -n ${{ env.DAPR_NAMESPACE }} -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}') != "True" ]]; do echo "waiting for tailscale pod" && sleep 1; done
-          echo "tailscale pod is now ready"
-          sleep 5
-          kubectl logs -l app=tailscale -n ${{ env.DAPR_NAMESPACE }}
         shell: bash
-      - name: Tailscale
-        uses: tailscale/github-action@e870a1112fcc1faeeeeea3c1b0ce544e5ad01844
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-          version: 1.28.0
       - name: Deploy dapr to AKS cluster
         if: env.TEST_PREFIX != ''
         env:

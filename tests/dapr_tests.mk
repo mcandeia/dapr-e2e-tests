@@ -381,6 +381,9 @@ else
 
 	# Set service CIDR and pod CIDR for the tailscale subrouter
 
+	@echo "configuring tailscale subrouter"
+	@sed -e "s;{{TS_ROUTES}};$(SERVICE_CIDR),$(POD_CIDR);g" ./tests/config/tailscale_subnet_router.yaml
+
 	@sed -e "s;{{TS_ROUTES}};$(SERVICE_CIDR),$(POD_CIDR);g" ./tests/config/tailscale_subnet_router.yaml | $(KUBECTL) apply --namespace $(DAPR_TEST_NAMESPACE) -f -
 endif
 
