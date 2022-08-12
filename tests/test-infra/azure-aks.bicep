@@ -75,6 +75,8 @@ var networkProfileWindows = {
 var networkProfileLinux = {
   networkPlugin: 'kubenet'
   serviceCidr: '10.1.0.0/16'
+  dnsServiceIP: '10.1.0.10'
+
 }
 
 resource aks 'Microsoft.ContainerService/managedClusters@2021-07-01' = {
