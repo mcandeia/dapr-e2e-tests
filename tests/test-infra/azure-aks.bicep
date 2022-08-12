@@ -74,6 +74,7 @@ var networkProfileWindows = {
 // Network profile when the cluster has only Linux nodes
 var networkProfileLinux = {
   networkPlugin: 'kubenet'
+  serviceCidr: '10.1.0.0/16'
 }
 
 resource aks 'Microsoft.ContainerService/managedClusters@2021-07-01' = {
