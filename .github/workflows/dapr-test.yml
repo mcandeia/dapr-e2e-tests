@@ -439,7 +439,7 @@ jobs:
         run: kubectl get configurations daprsystem -n ${{ env.DAPR_NAMESPACE }} -o yaml
       - name: Run E2E tests
         if: env.TEST_PREFIX != ''
-        run: DAPR_E2E_TEST="actor_reminder" make test-e2e-all
+        run: make test-e2e-all
       - name: Save control plane K8s resources
         if: always() && env.TEST_PREFIX != ''
         run: |
