@@ -72,8 +72,6 @@ func (c *KubeTestPlatform) tearDown() error {
 		fmt.Fprintf(os.Stderr, "failed to tear down ComponentResources. got: %q", err)
 	}
 
-	c.KubeClient.Dispose()
-
 	// TODO: clean up kube cluster
 	return nil
 }
