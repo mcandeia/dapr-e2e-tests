@@ -14,6 +14,7 @@ limitations under the License.
 package kubernetes
 
 import (
+	"net/http"
 	"path/filepath"
 
 	"k8s.io/client-go/kubernetes"
@@ -36,6 +37,7 @@ type KubeClient struct {
 	MetricsClient metrics.Interface
 	DaprClientSet daprclient.Interface
 	clientConfig  *rest.Config
+	httpClient    *http.Client
 }
 
 // NewKubeClient creates KubeClient instance.
@@ -45,7 +47,14 @@ func NewKubeClient(configPath string, clusterName string) (*KubeClient, error) {
 		return nil, err
 	}
 
-	kubecs, err := kubernetes.NewForConfig(config)
+	configShallowCopy := *config
+
+	client, err := rest.HTTPClientFor(&configShallowCopy)
+	if err != nil {
+		return nil, err
+	}
+
+	kubecs, err := kubernetes.NewForConfigAndClient(config, client)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +69,7 @@ func NewKubeClient(configPath string, clusterName string) (*KubeClient, error) {
 		return nil, err
 	}
 
-	return &KubeClient{ClientSet: kubecs, DaprClientSet: daprcs, clientConfig: config, MetricsClient: metricscs}, nil
+	return &KubeClient{httpClient: client, ClientSet: kubecs, DaprClientSet: daprcs, clientConfig: config, MetricsClient: metricscs}, nil
 }
 
 func clientConfig(kubeConfigPath string, clusterName string) (*rest.Config, error) {
@@ -79,6 +88,11 @@ func clientConfig(kubeConfigPath string, clusterName string) (*rest.Config, erro
 	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeConfigPath},
 		&overrides).ClientConfig()
+}
+
+// Dispose closes the idle http connections.
+func (c *KubeClient) Dispose() {
+	c.httpClient.CloseIdleConnections()
 }
 
 // GetClientConfig returns client configuration.
