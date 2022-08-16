@@ -419,7 +419,7 @@ jobs:
             PGID: "1000"
             TZ: "America/Mexico_City"
             SERVERPORT: "31820"
-            PEERS: "5"
+            PEERS: "1"
             PEERDNS: "$(kubectl -n kube-system get svc | grep kube-dns | awk '{print $3}')"
             ALLOWEDIPS: "0.0.0.0/0, ::/0"
             INTERNAL_SUBNET: "10.0.13.0"
@@ -504,11 +504,14 @@ jobs:
         if: env.TEST_PREFIX != '' && env.TEST_E2E_USE_INTERNAL_IP == 'true'
         run: |
           # install wireguard
+          echo "Installing wireguard..."
           sudo apt-get install wireguard
           ## Copy the config file
-          kubectl -n wireguard exec wireguard -- cat ./config/peer1/peer1.conf > /etc/wireguard/tunnel.conf
+          echo "Copying the wireguard config file"
+          sudo kubectl -n wireguard exec wireguard -- cat ./config/peer1/peer1.conf > /etc/wireguard/tunnel.conf
 
-          wg-quick up tunnel
+          echo "Starting wireguard tunnel"
+          sudo wg-quick up tunnel
         shell: bash
       - name: Preparing AKS cluster for test
         if: env.TEST_PREFIX != ''
