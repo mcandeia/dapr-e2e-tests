@@ -514,7 +514,7 @@ jobs:
           kubectl -n wireguard exec wireguard -- cat ./config/peer1/peer1.conf > ./tunnel.conf
 
           echo "Starting wireguard tunnel"
-          sudo wg-quick up ./tunnel.conf
+          #sudo wg-quick up ./tunnel.conf
         shell: bash
       - name: Preparing AKS cluster for test
         if: env.TEST_PREFIX != ''
