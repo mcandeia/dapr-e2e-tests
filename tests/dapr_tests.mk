@@ -47,6 +47,9 @@ injectorapp \
 injectorapp-init \
 metadata \
 
+# Test Suite Count
+E2E_TEST_SUITE_COUNT=4
+
 # PERFORMANCE test app list
 PERF_TEST_APPS=actorfeatures actorjava tester service_invocation_http service_invocation_grpc
 
@@ -283,9 +286,11 @@ test-deps:
 	# (see: https://golang.org/ref/mod#go-install)
 	command -v gotestsum || go install gotest.tools/gotestsum@latest
 
-# list all tested apps
-test-e2e-list:
-	@echo $(E2E_TEST_APPS)
+.PHONY: test-e2e-list-suites
+# list all test suites
+test-e2e-list-suites:
+	./tests/list_test_suites.sh "$(E2E_TEST_APPS)" $(E2E_TEST_SUITE_COUNT)
+
 # start all e2e tests
 test-e2e-all: check-e2e-env test-deps
 	# Note: we can set -p 2 to run two tests apps at a time, because today we do not share state between

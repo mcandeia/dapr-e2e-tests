@@ -286,7 +286,7 @@ jobs:
           make build-push-e2e-app-all
         shell: bash
 
-  provide-test-suites:
+  provide_test_suites:
     runs-on: ubuntu-latest
     steps:
       - name: Set up for scheduled test
@@ -316,16 +316,18 @@ jobs:
           repository: ${{ env.CHECKOUT_REPO }}
           ref: ${{ env.CHECKOUT_REF }}
       - name: list-tests
-        run: echo "::set-output name=test-suites::$(vendor/bin/monorepo-builder packages-json --names)"
+        id: list_tests
+        run: echo "::set-output name=test_suites::$(make -s test-e2e-list-suites)"
     # here, we save the result of this 1st phase to the "outputs"
     outputs:
-        test-suites: ${{ steps.list-tests.outputs.test-suites }}
+        test_suites: ${{ steps.list_tests.outputs.test_suites }}
 
   test-e2e:
     name: End-to-end ${{ matrix.target_os }} tests
     needs:
       - build
       - deploy-infrastructure
+      - provide_test_suites
     # Always run on Linux as the local OS is irrelevant and this is faster
     runs-on: ubuntu-latest
     env:
@@ -333,12 +335,13 @@ jobs:
       TARGET_ARCH: ${{ matrix.target_arch }}
       TEST_OUTPUT_FILE_PREFIX: "test_report"
       PULL_POLICY: IfNotPresent
-      TEST_E2E_USE_INTERNAL_IP: true
+      TEST_E2E_USE_INTERNAL_IP: false
     strategy:
       fail-fast: false
       matrix:
         target_os: [linux]
         target_arch: [amd64]
+        test_suite: ${{ fromJson(needs.provide_test_suites.outputs.test_suites) }}
     steps:
       - name: Set up log paths
         run: |
@@ -579,7 +582,7 @@ jobs:
         run: kubectl get configurations daprsystem -n ${{ env.DAPR_NAMESPACE }} -o yaml
       - name: Run E2E tests
         if: env.TEST_PREFIX != ''
-        run: make test-e2e-all
+        run: DAPR_E2E_TEST=${{ matrix.test_suite }} make test-e2e-all
       - name: Save control plane K8s resources
         if: always() && env.TEST_PREFIX != ''
         run: |
