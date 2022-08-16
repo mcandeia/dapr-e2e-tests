@@ -506,7 +506,9 @@ jobs:
           # install wireguard
           echo "Installing wireguard..."
           sudo apt-get install wireguard
-          sudo apt install openresolv
+          echo "Creating symlink so that resolveconf will be available"
+          ln -s /usr/bin/resolvectl /usr/local/bin/resolvconf
+
           ## Copy the config file
           echo "Copying the wireguard config file"
           kubectl -n wireguard exec wireguard -- cat ./config/peer1/peer1.conf > ./tunnel.conf
