@@ -500,8 +500,29 @@ jobs:
           echo "wireguard pod is now ready"
           sleep 5
           kubectl logs wireguard -n wireguard
+
+          kubectl -n wireguard exec wireguard -- cat ./config/peer1/peer1.conf > ./tunnel.conf
+
+          WIREGUARD_ENDPOINT=$(cat tunnel.conf | grep -o -P "Endpoint = .*"| cut -d " " -f3 | tr -d " ")
+          WIREGUARD_PUBLIC_KEY=$(cat tunnel.conf | grep -o -P "PublicKey = .*"| cut -d " " -f3 | tr -d " ")
+          WIREGUARD_PRIVATE_KEY=$(cat tunnel.conf | grep -o -P "PrivateKey = .*"| cut -d " " -f3 | tr -d " ")
+          WIREGUARD_PRESHARED_KEY=$(cat tunnel.conf | grep -o -P "PresharedKey = .*"| cut -d " " -f3 | tr -d " ")
+
+          echo "WIREGUARD_ENDPOINT=${WIREGUARD_ENDPOINT}" >> $GITHUB_ENV
+          echo "WIREGUARD_PUBLIC_KEY=${WIREGUARD_PUBLIC_KEY}" >> $GITHUB_ENV
+          echo "WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}" >> $GITHUB_ENV
+          echo "WIREGUARD_PRESHARED_KEY=${WIREGUARD_PRESHARED_KEY}" >> $GITHUB_ENV
+      - name: Set up WireGuard
+        uses: egor-tensin/setup-wireguard@v1
+        with:
+          endpoint: "${{ env.WIREGUARD_ENDPOINT }}"
+          endpoint_public_key: "${{ env.WIREGUARD_PUBLIC_KEY }}"
+          ips: 192.168.143.254/24,fd8c:bc10:5021::192.168.143.254/48
+          allowed_ips: 0.0.0.0/0, ::/0
+          private_key: "${{ env.WIREGUARD_PRIVATE_KEY }}"
+          preshared_key: "${{ env.WIREGUARD_PRESHARED_KEY }}"
       - name: Connect to wireguard
-        if: env.TEST_PREFIX != '' && env.TEST_E2E_USE_INTERNAL_IP == 'true'
+        if: false
         run: |
           # install wireguard
           echo "Installing wireguard..."
@@ -513,8 +534,12 @@ jobs:
           echo "Copying the wireguard config file"
           kubectl -n wireguard exec wireguard -- cat ./config/peer1/peer1.conf > ./tunnel.conf
 
+          ## Adding nat traversal keep alive
+          echo "PersistentKeepalive = 25" >> ./tunnel.conf
+
           echo "Starting wireguard tunnel"
-          #sudo wg-quick up ./tunnel.conf
+
+          wg-quick up ./tunnel.conf
         shell: bash
       - name: Preparing AKS cluster for test
         if: env.TEST_PREFIX != ''
