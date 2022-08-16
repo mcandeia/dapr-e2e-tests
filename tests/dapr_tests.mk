@@ -283,6 +283,9 @@ test-deps:
 	# (see: https://golang.org/ref/mod#go-install)
 	command -v gotestsum || go install gotest.tools/gotestsum@latest
 
+# list all tested apps
+test-e2e-list:
+	@echo $(E2E_TEST_APPS)
 # start all e2e tests
 test-e2e-all: check-e2e-env test-deps
 	# Note: we can set -p 2 to run two tests apps at a time, because today we do not share state between
