@@ -48,7 +48,9 @@ injectorapp-init \
 metadata \
 
 # Test Suite Count
-E2E_TEST_SUITE_COUNT=4
+ifeq ($(E2E_TEST_SUITE_COUNT),)
+E2E_TEST_SUITE_COUNT=1
+endif
 
 # PERFORMANCE test app list
 PERF_TEST_APPS=actorfeatures actorjava tester service_invocation_http service_invocation_grpc

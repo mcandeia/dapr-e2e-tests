@@ -19,9 +19,12 @@
 # - AZURE_DIAG_LOG_ANALYTICS_WORKSPACE_ID: Resource ID of the Log Analytics Workspace where to store certain diagnostic logs (e.g. `/subscriptions/<subscription>/resourcegroups/<resource group>/providers/Microsoft.OperationalInsights/workspaces/<workspace name>`)
 # - AZURE_DIAG_STORAGE_ID: Resource ID of the Azure Storage account where to store certain diagnostic logs (e.g. `/subscriptions/<subscription>/resourcegroups/<resource group>/providers/Microsoft.Storage/storageAccounts/<storage account name>`)
 
-name: dapr-test-wireguard
+name: dapr-test
 
 on:
+  # Run every 2 hours
+  schedule:
+    - cron: "0 */2 * * *"
   # Manual trigger
   workflow_dispatch:
   # Dispatch on external events
@@ -145,11 +148,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-2019]
         target_arch: [amd64]
         include:
           - os: ubuntu-latest
             target_os: linux
+          - os: windows-2019
+            target_os: windows
     steps:
       - name: Set up for scheduled test
         if: github.event_name != 'repository_dispatch'
@@ -318,16 +323,14 @@ jobs:
       - name: list-tests
         id: list_tests
         run: echo "::set-output name=test_suites::$(make -s test-e2e-list-suites)"
-    # here, we save the result of this 1st phase to the "outputs"
     outputs:
-        test_suites: ${{ steps.list_tests.outputs.test_suites }}
+      test_suites: ${{ steps.list_tests.outputs.test_suites }}
 
-  test-e2e:
-    name: End-to-end ${{ matrix.target_os }} tests
+  prepare_e2e:
+    name: Prepare End-to-end ${{ matrix.target_os }} tests
     needs:
       - build
       - deploy-infrastructure
-      - provide_test_suites
     # Always run on Linux as the local OS is irrelevant and this is faster
     runs-on: ubuntu-latest
     env:
@@ -335,19 +338,133 @@ jobs:
       TARGET_ARCH: ${{ matrix.target_arch }}
       TEST_OUTPUT_FILE_PREFIX: "test_report"
       PULL_POLICY: IfNotPresent
-      TEST_E2E_USE_INTERNAL_IP: false
     strategy:
       fail-fast: false
       matrix:
-        target_os: [linux]
+        target_os: [linux, windows]
         target_arch: [amd64]
-        test_suite: ${{ fromJson(needs.provide_test_suites.outputs.test_suites) }}
     steps:
       - name: Set up log paths
         run: |
           echo "DAPR_CONTAINER_LOG_PATH=$GITHUB_WORKSPACE/container_logs/${{ matrix.target_os }}_${{ matrix.target_arch }}" | sed 's/\\/\//g' >> $GITHUB_ENV
           echo "DAPR_TEST_LOG_PATH=$GITHUB_WORKSPACE/test_logs/${{ matrix.target_os }}_${{ matrix.target_arch }}" | sed 's/\\/\//g' >> $GITHUB_ENV
         shell: bash
+      - name: Set up for scheduled test
+        if: github.event_name != 'repository_dispatch'
+        run: |
+          echo "CHECKOUT_REPO=${{ github.repository }}" >> $GITHUB_ENV
+          echo "CHECKOUT_REF=refs/heads/master" >> $GITHUB_ENV
+        shell: bash
+      - name: Parse test payload
+        if: github.event_name == 'repository_dispatch'
+        uses: actions/github-script@0.3.0
+        with:
+          github-token: ${{secrets.DAPR_BOT_TOKEN}}
+          script: |
+            const testPayload = context.payload.client_payload;
+            if (testPayload && testPayload.command == "ok-to-test") {
+              var fs = require('fs');
+              // Set environment variables
+              fs.appendFileSync(process.env.GITHUB_ENV,
+                `CHECKOUT_REPO=${testPayload.pull_head_repo}\n`+
+                `CHECKOUT_REF=${testPayload.pull_head_ref}`);
+            }
+      - name: Set up Go ${{ env.GOVER }}
+        if: env.CHECKOUT_REPO != ''
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ env.GOVER }}
+      - name: Check out code
+        if: env.CHECKOUT_REPO != ''
+        uses: actions/checkout@v2
+        with:
+          repository: ${{ env.CHECKOUT_REPO }}
+          ref: ${{ env.CHECKOUT_REF }}
+      - uses: azure/setup-kubectl@v1
+        with:
+          version: ${{ env.KUBECTLVER }}
+        id: install
+      - name: Set up Helm ${{ env.HELMVER }}
+        uses: azure/setup-helm@v1
+        with:
+          version: ${{ env.HELMVER }}
+      - name: Login to Azure
+        if: env.CHECKOUT_REPO != ''
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Build test prefix and set env vars
+        if: env.CHECKOUT_REPO != ''
+        run: |
+          BASE_STR="E2E|${GITHUB_SHA}|${GITHUB_SERVER_URL}|${GITHUB_REPOSITORY}|${GITHUB_RUN_ID}|${GITHUB_RUN_ATTEMPT}"
+          SUFFIX=$(echo $BASE_STR | sha1sum | head -c 10)
+          TEST_PREFIX=""
+          if [ "${{ env.TARGET_OS }}" == "windows" ] ; then
+            TEST_PREFIX="dapre2e${SUFFIX}w"
+          else
+            TEST_PREFIX="dapre2e${SUFFIX}l"
+          fi
+          echo "Test prefix is ${TEST_PREFIX}"
+          echo "TEST_PREFIX=${TEST_PREFIX}" >> $GITHUB_ENV
+          echo "DAPR_REGISTRY=${TEST_PREFIX}acr.azurecr.io" >> $GITHUB_ENV
+          echo "TEST_CLUSTER=${TEST_PREFIX}-aks" >> $GITHUB_ENV
+          echo "DAPR_TAG=${TEST_PREFIX}" >> $GITHUB_ENV
+          echo "DAPR_TEST_TAG=${TEST_PREFIX}" >> $GITHUB_ENV
+          echo "TEST_RESOURCE_GROUP=Dapr-E2E-${TEST_PREFIX}" >> $GITHUB_ENV
+        shell: bash
+      - name: Connect to Kubernetes
+        if: env.TEST_PREFIX != ''
+        run: |
+          az aks get-credentials -n "${{ env.TEST_CLUSTER }}" -g "${{ env.TEST_RESOURCE_GROUP }}"
+          kubectl create namespace ${{ env.DAPR_NAMESPACE }}
+        shell: bash
+      - name: Setup for cloud resources
+        if: env.TEST_PREFIX != '' && env.TEST_CLOUD_ENV != ''
+        run: ./tests/test-infra/setup_${{ env.TEST_CLOUD_ENV }}.sh
+        shell: bash
+      - name: Preparing AKS cluster for test
+        if: env.TEST_PREFIX != ''
+        run: |
+          make setup-helm-init
+          make setup-test-env-redis
+          make setup-test-env-kafka
+          if [ "${{ env.DAPR_TEST_STATE_STORE }}" == "" ] ; then
+            make setup-test-env-mongodb
+          fi
+          kubectl get pods -n ${{ env.DAPR_NAMESPACE }}
+        shell: bash
+      - name: Deploy dapr to AKS cluster
+        if: env.TEST_PREFIX != ''
+        env:
+          ADDITIONAL_HELM_SET: "dapr_operator.logLevel=debug,dapr_operator.watchInterval=20s"
+        run: make docker-deploy-k8s
+      - name: Deploy test components
+        if: env.TEST_PREFIX != ''
+        run: make setup-test-components
+      - name: Show dapr configurations
+        if: env.TEST_PREFIX != ''
+        run: kubectl get configurations daprsystem -n ${{ env.DAPR_NAMESPACE }} -o yaml
+
+  test-e2e:
+    name: End-to-end ${{ matrix.target_os }} ${{ matrix.test_suite}} tests
+    needs:
+      - prepare_e2e
+      - provide_test_suites
+    # Always run on Linux as the local OS is irrelevant and this is faster
+    runs-on: ubuntu-latest
+    env:
+      TARGET_OS: ${{ fromJson(matrix.test_ctx).TARGET_OS }}
+      TARGET_ARCH: ${{ fromJson(matrix.test_ctx).TARGET_ARCH }}
+      TEST_OUTPUT_FILE_PREFIX: "test_report"
+      PULL_POLICY: IfNotPresent
+    strategy:
+      fail-fast: false
+      matrix:
+        target_os: [linux, windows]
+        target_arch: [amd64]
+        test_ctx: ${{ fromJson(needs.prepare_e2e.outputs.test_context) }}
+        test_suite: ${{ fromJson(needs.provide_test_suites.outputs.test_suites) }}
+    steps:
       - name: Set up for scheduled test
         if: github.event_name != 'repository_dispatch'
         run: |
@@ -393,196 +510,24 @@ jobs:
         with:
           version: ${{ env.KUBECTLVER }}
         id: install
-      - name: Set up Helm ${{ env.HELMVER }}
-        uses: azure/setup-helm@v1
-        with:
-          version: ${{ env.HELMVER }}
       - name: Login to Azure
         if: env.CHECKOUT_REPO != ''
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
-      - name: Build test prefix and set env vars
-        if: env.CHECKOUT_REPO != ''
-        run: |
-          BASE_STR="E2E|${GITHUB_SHA}|${GITHUB_SERVER_URL}|${GITHUB_REPOSITORY}|${GITHUB_RUN_ID}|${GITHUB_RUN_ATTEMPT}"
-          SUFFIX=$(echo $BASE_STR | sha1sum | head -c 10)
-          TEST_PREFIX=""
-          if [ "${{ env.TARGET_OS }}" == "windows" ] ; then
-            TEST_PREFIX="dapre2e${SUFFIX}w"
-          else
-            TEST_PREFIX="dapre2e${SUFFIX}l"
-          fi
-          echo "Test prefix is ${TEST_PREFIX}"
-          echo "TEST_PREFIX=${TEST_PREFIX}" >> $GITHUB_ENV
-          echo "DAPR_REGISTRY=${TEST_PREFIX}acr.azurecr.io" >> $GITHUB_ENV
-          echo "TEST_CLUSTER=${TEST_PREFIX}-aks" >> $GITHUB_ENV
-          echo "DAPR_TAG=${TEST_PREFIX}" >> $GITHUB_ENV
-          echo "DAPR_TEST_TAG=${TEST_PREFIX}" >> $GITHUB_ENV
-          echo "TEST_RESOURCE_GROUP=Dapr-E2E-${TEST_PREFIX}" >> $GITHUB_ENV
-        shell: bash
-      - name: Enable tcpdump
-        run: |
-          sudo tcpdump -nn -i any -w sntp.cap &
-          sleep 1
-        shell: bash
       - name: Connect to Kubernetes
         if: env.TEST_PREFIX != ''
         run: |
           az aks get-credentials -n "${{ env.TEST_CLUSTER }}" -g "${{ env.TEST_RESOURCE_GROUP }}"
           kubectl create namespace ${{ env.DAPR_NAMESPACE }}
-        shell: bash
-      - name: Setup for cloud resources
-        if: env.TEST_PREFIX != '' && env.TEST_CLOUD_ENV != ''
-        run: ./tests/test-infra/setup_${{ env.TEST_CLOUD_ENV }}.sh
-        shell: bash
-      - name: Setup wireguard pod
-        if: env.TEST_PREFIX != '' && env.TEST_E2E_USE_INTERNAL_IP == 'true'
+      - name: Enable tcpdump
         run: |
-          WIREGUARD_CONFIG=$(cat << EOF
-          apiVersion: v1
-          kind: Namespace
-          metadata:
-            name: wireguard
-            labels:
-              name: wireguard
-          ---
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: wireguard-configmap
-            namespace: wireguard
-          data:
-            PUID: "1000"
-            PGID: "1000"
-            TZ: "America/Mexico_City"
-            SERVERPORT: "31820"
-            PEERS: "1"
-            PEERDNS: "$(kubectl -n kube-system get svc | grep kube-dns | awk '{print $3}')"
-            ALLOWEDIPS: "0.0.0.0/0, ::/0"
-            INTERNAL_SUBNET: "10.0.13.0"
-          ---
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: wireguard
-            namespace: wireguard
-            labels:
-              app: wireguard
-          spec:
-            containers:
-            - name: wireguard
-              image: ghcr.io/linuxserver/wireguard
-              envFrom:
-              - configMapRef:
-                  name: wireguard-configmap
-              securityContext:
-                capabilities:
-                  add:
-                    - NET_ADMIN
-                    - SYS_MODULE
-                privileged: true
-              volumeMounts:
-                - name: wg-config
-                  mountPath: /config
-                - name: host-volumes
-                  mountPath: /lib/modules
-              ports:
-              - containerPort: 51820
-                protocol: UDP
-              resources:
-                requests:
-                  memory: "64Mi"
-                  cpu: "100m"
-                limits:
-                  memory: "128Mi"
-                  cpu: "200m"
-            volumes:
-              - name: wg-config
-                hostPath:
-                  path: /config
-                  type: DirectoryOrCreate
-              - name: host-volumes
-                hostPath:
-                  path: /lib/modules
-                  type: Directory
-          ---
-          kind: Service
-          apiVersion: v1
-          metadata:
-            labels:
-              k8s-app: wireguard
-            name: wireguard-service
-            namespace: wireguard
-          spec:
-            type: NodePort
-            ports:
-            - port: 51820
-              nodePort: 31820
-              protocol: UDP
-              targetPort: 51820
-            selector:
-              app: wireguard
-          EOF
-          )
-
-          echo "$WIREGUARD_CONFIG" | kubectl apply -f -
-          # Wait for wireguard pod to be ready
-          for i in 1 2 3 4 5; do
-            echo "waiting for wireguard pod" && kubectl logs wireguard -n wireguard && [[ $(kubectl get pod wireguard -n wireguard -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}') == "True" ]] && break || sleep 10
-          done
-          if [[ $(kubectl get pod wireguard -n wireguard -o 'jsonpath={..status.conditions[?(@.type=="Ready")].status}') != "True" ]]; then
-            echo "wireguard pod couldn't be ready"
-            exit 1
-          fi
-          echo "wireguard pod is now ready"
-          sleep 5
-          kubectl logs wireguard -n wireguard
-      - name: Connect to wireguard
-        if: env.TEST_PREFIX != '' && env.TEST_E2E_USE_INTERNAL_IP == 'true'
-        run: |
-          # install wireguard
-          echo "Installing wireguard..."
-          sudo apt-get install wireguard
-          echo "Creating symlink so that resolveconf will be available"
-          ln -s /usr/bin/resolvectl /usr/local/bin/resolvconf
-
-          ## Copy the config file
-          echo "Copying the wireguard config file"
-          kubectl -n wireguard exec wireguard -- cat ./config/peer1/peer1.conf > ./tunnel.conf
-
-          ## Adding nat traversal keep alive
-          echo "PersistentKeepalive = 25" >> ./tunnel.conf
-
-          echo "Starting wireguard tunnel"
-
-          wg-quick up ./tunnel.conf
+          sudo tcpdump -nn -i any -w sntp.cap &
+          sleep 1
         shell: bash
-      - name: Preparing AKS cluster for test
-        if: env.TEST_PREFIX != ''
-        run: |
-          make setup-helm-init
-          make setup-test-env-redis
-          make setup-test-env-kafka
-          if [ "${{ env.DAPR_TEST_STATE_STORE }}" == "" ] ; then
-            make setup-test-env-mongodb
-          fi
-          kubectl get pods -n ${{ env.DAPR_NAMESPACE }}
-        shell: bash
-      - name: Deploy dapr to AKS cluster
-        if: env.TEST_PREFIX != ''
-        env:
-          ADDITIONAL_HELM_SET: "dapr_operator.logLevel=debug,dapr_operator.watchInterval=20s"
-        run: make docker-deploy-k8s
-      - name: Deploy test components
-        if: env.TEST_PREFIX != ''
-        run: make setup-test-components
-      - name: Show dapr configurations
-        if: env.TEST_PREFIX != ''
-        run: kubectl get configurations daprsystem -n ${{ env.DAPR_NAMESPACE }} -o yaml
       - name: Run E2E tests
         if: env.TEST_PREFIX != ''
-        run: DAPR_E2E_TEST=${{ matrix.test_suite }} make test-e2e-all
+        run: DAPR_E2E_TEST="${{ matrix.test_suite }}" make test-e2e-all
       - name: Save control plane K8s resources
         if: always() && env.TEST_PREFIX != ''
         run: |

@@ -1,0 +1,21 @@
+name: build
+on: push
+jobs:
+  job1:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        var: [a, b]
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: echo "::set-output name=matrix::${{ matrix.var }}"
+  job2:
+    needs: job1
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        a: ${{ needs.job1.outputs.matrix }}
+    steps:
+      - run: echo ${{ matrix.a }}
