@@ -508,10 +508,10 @@ jobs:
           sudo apt-get install wireguard
           ## Copy the config file
           echo "Copying the wireguard config file"
-          sudo kubectl -n wireguard exec wireguard -- cat ./config/peer1/peer1.conf > /etc/wireguard/tunnel.conf
+          kubectl -n wireguard exec wireguard -- cat ./config/peer1/peer1.conf > ./tunnel.conf
 
           echo "Starting wireguard tunnel"
-          sudo wg-quick up tunnel
+          sudo wg-quick up ./tunnel.conf
         shell: bash
       - name: Preparing AKS cluster for test
         if: env.TEST_PREFIX != ''
