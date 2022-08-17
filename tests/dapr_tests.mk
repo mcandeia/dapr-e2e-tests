@@ -291,7 +291,7 @@ test-deps:
 .PHONY: test-e2e-list-suites
 # list all test suites
 test-e2e-list-suites:
-	./tests/list_test_suites.sh "$(E2E_TEST_APPS)" $(E2E_TEST_SUITE_COUNT)
+	./tests/list_test_suites.sh "$(shell ls ./tests/e2e/ | tr '\n' ' ')" $(E2E_TEST_SUITE_COUNT)
 
 # start all e2e tests
 test-e2e-all: check-e2e-env test-deps

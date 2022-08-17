@@ -49,6 +49,8 @@ env:
   AZURE_REGIONS: "westus3"
   # Container registry where to cache e2e test images
   DAPR_CACHE_REGISTRY: "dapre2eacr.azurecr.io"
+  # Number of test suites
+  E2E_TEST_SUITE_COUNT: 4
 
 jobs:
   deploy-infrastructure:
@@ -534,7 +536,6 @@ jobs:
         if: env.TEST_PREFIX != ''
         run: |
           az aks get-credentials -n "${{ env.TEST_CLUSTER }}" -g "${{ env.TEST_RESOURCE_GROUP }}"
-          kubectl create namespace ${{ env.DAPR_NAMESPACE }}
       - name: Enable tcpdump
         run: |
           sudo tcpdump -nn -i any -w sntp.cap &
