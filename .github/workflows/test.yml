@@ -7,20 +7,14 @@ jobs:
       matrix:
         var: [a, b]
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      matrix-a: ${{ steps.set-matrix-a.outputs }}
+      matrix-b: ${{ steps.set-matrix-b.outputs }}
     steps:
-      - id: set-matrix
+      - id: set-matrix-${{matrix.var}}
         run: |
-          A="${{ matrix.var }},${{ env.A }}"
-          echo "A=${A}" >> $GITHUB_ENV
-          echo $A
-          echo ${{ steps.set-matrix.outputs.matrix }}
-          echo "::set-output name=matrix::$A"
+          echo "::set-output name=${{ matrix.var }}::${{ matrix.var }}"
   job2:
     needs: job1
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        a: ${{ needs.job1.outputs.matrix }}
     steps:
-      - run: echo ${{ matrix.a }}
+      - run: echo "${{ needs.job1.outputs.matrix }}"
