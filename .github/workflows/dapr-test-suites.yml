@@ -462,24 +462,6 @@ jobs:
           echo "DAPR_CONTAINER_LOG_PATH=$GITHUB_WORKSPACE/container_logs/${{ matrix.target_os }}_${{ matrix.target_arch }}" | sed 's/\\/\//g' >> $GITHUB_ENV
           echo "DAPR_TEST_LOG_PATH=$GITHUB_WORKSPACE/test_logs/${{ matrix.target_os }}_${{ matrix.target_arch }}" | sed 's/\\/\//g' >> $GITHUB_ENV
         shell: bash
-      - name: Build test prefix and set env vars
-        if: env.CHECKOUT_REPO != ''
-        run: |
-          BASE_STR="E2E|${GITHUB_SHA}|${GITHUB_SERVER_URL}|${GITHUB_REPOSITORY}|${GITHUB_RUN_ID}|${GITHUB_RUN_ATTEMPT}"
-          SUFFIX=$(echo $BASE_STR | sha1sum | head -c 10)
-          TEST_PREFIX=""
-          if [ "${{ env.TARGET_OS }}" == "windows" ] ; then
-            TEST_PREFIX="dapre2e${SUFFIX}w"
-          else
-            TEST_PREFIX="dapre2e${SUFFIX}l"
-          fi
-          echo "Test prefix is ${TEST_PREFIX}"
-          echo "TEST_PREFIX=${TEST_PREFIX}" >> $GITHUB_ENV
-          echo "DAPR_REGISTRY=${TEST_PREFIX}acr.azurecr.io" >> $GITHUB_ENV
-          echo "TEST_CLUSTER=${TEST_PREFIX}-aks" >> $GITHUB_ENV
-          echo "DAPR_TAG=${TEST_PREFIX}" >> $GITHUB_ENV
-          echo "DAPR_TEST_TAG=${TEST_PREFIX}" >> $GITHUB_ENV
-          echo "TEST_RESOURCE_GROUP=Dapr-E2E-${TEST_PREFIX}" >> $GITHUB_ENV
       - name: Set up for scheduled test
         if: github.event_name != 'repository_dispatch'
         run: |
@@ -500,6 +482,24 @@ jobs:
                 `CHECKOUT_REPO=${testPayload.pull_head_repo}\n`+
                 `CHECKOUT_REF=${testPayload.pull_head_ref}`);
             }
+      - name: Build test prefix and set env vars
+        if: env.CHECKOUT_REPO != ''
+        run: |
+          BASE_STR="E2E|${GITHUB_SHA}|${GITHUB_SERVER_URL}|${GITHUB_REPOSITORY}|${GITHUB_RUN_ID}|${GITHUB_RUN_ATTEMPT}"
+          SUFFIX=$(echo $BASE_STR | sha1sum | head -c 10)
+          TEST_PREFIX=""
+          if [ "${{ env.TARGET_OS }}" == "windows" ] ; then
+            TEST_PREFIX="dapre2e${SUFFIX}w"
+          else
+            TEST_PREFIX="dapre2e${SUFFIX}l"
+          fi
+          echo "Test prefix is ${TEST_PREFIX}"
+          echo "TEST_PREFIX=${TEST_PREFIX}" >> $GITHUB_ENV
+          echo "DAPR_REGISTRY=${TEST_PREFIX}acr.azurecr.io" >> $GITHUB_ENV
+          echo "TEST_CLUSTER=${TEST_PREFIX}-aks" >> $GITHUB_ENV
+          echo "DAPR_TAG=${TEST_PREFIX}" >> $GITHUB_ENV
+          echo "DAPR_TEST_TAG=${TEST_PREFIX}" >> $GITHUB_ENV
+          echo "TEST_RESOURCE_GROUP=Dapr-E2E-${TEST_PREFIX}" >> $GITHUB_ENV
       - name: Set up Go ${{ env.GOVER }}
         if: env.CHECKOUT_REPO != ''
         uses: actions/setup-go@v3
@@ -631,6 +631,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - prepare_e2e
+      - test-e2e
     if: always()
     steps:
       - name: Login to Azure
