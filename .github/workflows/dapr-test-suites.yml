@@ -464,10 +464,10 @@ jobs:
           CURRENT_JOB=${{ strategy.job-index }}
           TOTAL_TESTS=${{ env.E2E_TEST_SUITE_COUNT }}
           TEST_SUITE_NUMBER=$(expr $CURRENT_JOB % $TOTAL_TESTS)
-          echo "TEST_SUITE_NUMBER=${TEST_SUITE_NUMBER}' >> $GITHUB_ENV
-    
+          TEST_SUITE_NUMBER=$(expr $TEST_SUITE_NUMBER + 1)
+          echo "TEST_SUITE_NUMBER=suite_${TEST_SUITE_NUMBER}" >> $GITHUB_ENV
           echo "Suite: $TEST_SUITE_NUMBER"
-          echo "${{ matrix.test_suite }}""
+          echo "${{ matrix.test_suite }}"
         shell: bash
       - name: Set up log paths
         run: |
