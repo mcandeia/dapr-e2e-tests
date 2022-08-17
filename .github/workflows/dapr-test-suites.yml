@@ -19,7 +19,7 @@
 # - AZURE_DIAG_LOG_ANALYTICS_WORKSPACE_ID: Resource ID of the Log Analytics Workspace where to store certain diagnostic logs (e.g. `/subscriptions/<subscription>/resourcegroups/<resource group>/providers/Microsoft.OperationalInsights/workspaces/<workspace name>`)
 # - AZURE_DIAG_STORAGE_ID: Resource ID of the Azure Storage account where to store certain diagnostic logs (e.g. `/subscriptions/<subscription>/resourcegroups/<resource group>/providers/Microsoft.Storage/storageAccounts/<storage account name>`)
 
-name: dapr-test
+name: dapr-test-suites
 
 on:
   # Manual trigger
@@ -341,11 +341,6 @@ jobs:
         target_os: [linux, windows]
         target_arch: [amd64]
     steps:
-      - name: Set up log paths
-        run: |
-          echo "DAPR_CONTAINER_LOG_PATH=$GITHUB_WORKSPACE/container_logs/${{ matrix.target_os }}_${{ matrix.target_arch }}" | sed 's/\\/\//g' >> $GITHUB_ENV
-          echo "DAPR_TEST_LOG_PATH=$GITHUB_WORKSPACE/test_logs/${{ matrix.target_os }}_${{ matrix.target_arch }}" | sed 's/\\/\//g' >> $GITHUB_ENV
-        shell: bash
       - name: Set up for scheduled test
         if: github.event_name != 'repository_dispatch'
         run: |
@@ -450,24 +445,41 @@ jobs:
     # Always run on Linux as the local OS is irrelevant and this is faster
     runs-on: ubuntu-latest
     env:
-      TARGET_OS: ${{ fromJson(matrix.test_ctx).TARGET_OS }}
-      TARGET_ARCH: ${{ fromJson(matrix.test_ctx).TARGET_ARCH }}
-      TEST_PREFIX: ${{ fromJson(matrix.test_ctx).TEST_PREFIX }}
-      DAPR_CONTAINER_LOG_PATH: ${{ fromJson(matrix.test_ctx).DAPR_CONTAINER_LOG_PATH }}
-      DAPR_TEST_LOG_PATH: ${{ fromJson(matrix.test_ctx).DAPR_TEST_LOG_PATH }}
-      DAPR_REGISTRY: ${{ fromJson(matrix.test_ctx).DAPR_TEST_LOG_PATH }}
-      TEST_CLUSTER: ${{ fromJson(matrix.test_ctx).TEST_CLUSTER }}
-      DAPR_TAG: ${{ fromJson(matrix.test_ctx).DAPR_TAG }}
-      DAPR_TEST_TAG: ${{ fromJson(matrix.test_ctx).DAPR_TEST_TAG }}
-      TEST_RESOURCE_GROUP:  ${{ fromJson(matrix.test_ctx).DAPR_TEST_TAG }}
+      TARGET_OS: ${{ matrix.target_os }}
+      TARGET_ARCH: ${{ matrix.target_arch }}
       TEST_OUTPUT_FILE_PREFIX: "test_report"
       PULL_POLICY: IfNotPresent
     strategy:
       fail-fast: false
       matrix:
-        test_ctx: ${{ fromJson(needs.prepare_e2e.outputs.test_context) }}
+        target_os: [linux, windows]
+        target_arch: [amd64]
+        #test_ctx: ${{ fromJson(needs.prepare_e2e.outputs.test_context) }}
         test_suite: ${{ fromJson(needs.provide_test_suites.outputs.test_suites) }}
     steps:
+      - name: Set up log paths
+        run: |
+          echo "DAPR_CONTAINER_LOG_PATH=$GITHUB_WORKSPACE/container_logs/${{ matrix.target_os }}_${{ matrix.target_arch }}" | sed 's/\\/\//g' >> $GITHUB_ENV
+          echo "DAPR_TEST_LOG_PATH=$GITHUB_WORKSPACE/test_logs/${{ matrix.target_os }}_${{ matrix.target_arch }}" | sed 's/\\/\//g' >> $GITHUB_ENV
+        shell: bash
+      - name: Build test prefix and set env vars
+        if: env.CHECKOUT_REPO != ''
+        run: |
+          BASE_STR="E2E|${GITHUB_SHA}|${GITHUB_SERVER_URL}|${GITHUB_REPOSITORY}|${GITHUB_RUN_ID}|${GITHUB_RUN_ATTEMPT}"
+          SUFFIX=$(echo $BASE_STR | sha1sum | head -c 10)
+          TEST_PREFIX=""
+          if [ "${{ env.TARGET_OS }}" == "windows" ] ; then
+            TEST_PREFIX="dapre2e${SUFFIX}w"
+          else
+            TEST_PREFIX="dapre2e${SUFFIX}l"
+          fi
+          echo "Test prefix is ${TEST_PREFIX}"
+          echo "TEST_PREFIX=${TEST_PREFIX}" >> $GITHUB_ENV
+          echo "DAPR_REGISTRY=${TEST_PREFIX}acr.azurecr.io" >> $GITHUB_ENV
+          echo "TEST_CLUSTER=${TEST_PREFIX}-aks" >> $GITHUB_ENV
+          echo "DAPR_TAG=${TEST_PREFIX}" >> $GITHUB_ENV
+          echo "DAPR_TEST_TAG=${TEST_PREFIX}" >> $GITHUB_ENV
+          echo "TEST_RESOURCE_GROUP=Dapr-E2E-${TEST_PREFIX}" >> $GITHUB_ENV
       - name: Set up for scheduled test
         if: github.event_name != 'repository_dispatch'
         run: |
