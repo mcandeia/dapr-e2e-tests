@@ -11,8 +11,10 @@ jobs:
     steps:
       - id: set-matrix
         run: |
-          A="$A,${{ matrix.var}}"
+          A="${{ matrix.var }},${{ env.A }}"
+          echo "A=${A}" >> $GITHUB_ENV
           echo $A
+          echo ${{ steps.set-matrix.outputs.matrix }}
           echo "::set-output name=matrix::$A"
   job2:
     needs: job1
@@ -21,4 +23,4 @@ jobs:
       matrix:
         a: ${{ needs.job1.outputs.matrix }}
     steps:
-      - run: echo ${{ matrix }}
+      - run: echo ${{ matrix.a }}
