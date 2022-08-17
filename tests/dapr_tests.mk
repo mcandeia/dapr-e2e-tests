@@ -288,8 +288,8 @@ test-deps:
 	# (see: https://golang.org/ref/mod#go-install)
 	command -v gotestsum || go install gotest.tools/gotestsum@latest
 
-.PHONY: test-e2e-list-suites
 # list all test suites
+.PHONY: test-e2e-list-suites
 test-e2e-list-suites:
 	./tests/list_test_suites.sh "$(shell ls ./tests/e2e/ | tr '\n' ' ')" $(E2E_TEST_SUITE_COUNT)
 
