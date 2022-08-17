@@ -455,13 +455,19 @@ jobs:
     env:
       TARGET_OS: ${{ fromJson(matrix.test_ctx).TARGET_OS }}
       TARGET_ARCH: ${{ fromJson(matrix.test_ctx).TARGET_ARCH }}
+      TEST_PREFIX: ${{ fromJson(matrix.test_ctx).TEST_PREFIX }}
+      DAPR_CONTAINER_LOG_PATH: ${{ fromJson(matrix.test_ctx).DAPR_CONTAINER_LOG_PATH }}
+      DAPR_TEST_LOG_PATH: ${{ fromJson(matrix.test_ctx).DAPR_TEST_LOG_PATH }}
+      DAPR_REGISTRY: ${{ fromJson(matrix.test_ctx).DAPR_TEST_LOG_PATH }}
+      TEST_CLUSTER: ${{ fromJson(matrix.test_ctx).TEST_CLUSTER }}
+      DAPR_TAG: ${{ fromJson(matrix.test_ctx).DAPR_TAG }}
+      DAPR_TEST_TAG: ${{ fromJson(matrix.test_ctx).DAPR_TEST_TAG }}
+      TEST_RESOURCE_GROUP:  ${{ fromJson(matrix.test_ctx).DAPR_TEST_TAG }}
       TEST_OUTPUT_FILE_PREFIX: "test_report"
       PULL_POLICY: IfNotPresent
     strategy:
       fail-fast: false
       matrix:
-        target_os: [linux, windows]
-        target_arch: [amd64]
         test_ctx: ${{ fromJson(needs.prepare_e2e.outputs.test_context) }}
         test_suite: ${{ fromJson(needs.provide_test_suites.outputs.test_suites) }}
     steps:
@@ -554,26 +560,26 @@ jobs:
         if: always()
         uses: actions/upload-artifact@master
         with:
-          name: ${{ matrix.target_os }}_${{ matrix.target_arch }}_tcpdump
+          name: ${{ env.TARGET_OS }}_${{ env.TARGET_ARCH }}_tcpdump
           path: sntp.cap.gz
       - name: Upload container logs
         if: always()
         uses: actions/upload-artifact@master
         with:
-          name: ${{ matrix.target_os }}_${{ matrix.target_arch }}_container_logs
+          name: ${{ env.TARGET_OS }}_${{ env.TARGET_ARCH }}_container_logs
           path: ${{ env.DAPR_CONTAINER_LOG_PATH }}
       - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@master
         with:
-          name: ${{ matrix.target_os }}_${{ matrix.target_arch }}_test_logs
+          name: ${{ env.TARGET_OS }}_${{ env.TARGET_ARCH }}_test_logs
           path: ${{ env.DAPR_TEST_LOG_PATH }}
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@master
         with:
           #TODO: .json suffix can be removed from artifact name after test analytics scripts are updated
-          name: ${{ matrix.target_os }}_${{ matrix.target_arch }}_e2e.json
+          name: ${{ env.TARGET_OS }}_${{ env.TARGET_ARCH }}_e2e.json
           path: ${{ env.TEST_OUTPUT_FILE_PREFIX }}_e2e.*
       - name: Add test result comment to PR
         if: always() && github.event_name == 'repository_dispatch' && env.TEST_PREFIX != ''
@@ -615,7 +621,7 @@ jobs:
     name: Clean up Azure resources
     runs-on: ubuntu-latest
     needs:
-      - test-e2e
+      - prepare_e2e
     if: always()
     steps:
       - name: Login to Azure
